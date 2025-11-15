@@ -47,14 +47,14 @@ server:
 database:
   sqlite_path: "chat.db"
 socket:
-  cors_allowed: "http://127.0.0.1:6000,http://127.0.0.1:6001"
+  cors_allowed: "http://127.0.0.1:5173,http://127.0.0.1:6001"
 ```
 
 Client-side overrides live in `client/.env` (ignored by git). For local dev:
 
 ```
 VITE_SOCKET_URL=http://127.0.0.1:8080
-VITE_DEV_PORT=6000
+VITE_DEV_PORT=5173
 ```
 
 ### 3. Run the backend

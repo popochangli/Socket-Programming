@@ -7,7 +7,7 @@ const parsePort = (value: string | undefined, fallback: number) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const DEV_PORT = parsePort(process.env.VITE_DEV_PORT ?? process.env.PORT, 6000);
+const DEV_PORT = parsePort(process.env.VITE_DEV_PORT ?? process.env.PORT, 5173);
 const PREVIEW_PORT = parsePort(process.env.VITE_PREVIEW_PORT ?? process.env.PREVIEW_PORT, 4600);
 
 // https://vite.dev/config/
