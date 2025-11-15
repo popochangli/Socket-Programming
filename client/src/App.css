@@ -97,10 +97,12 @@
 .sidebar__create input {
   flex: 1;
   border-radius: 10px;
+  min-width: 0;
 }
 
 .sidebar__create button {
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
 .sidebar__section {

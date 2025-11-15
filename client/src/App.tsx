@@ -9,6 +9,7 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8080";
 const DISPLAY_NAME_KEY = "chat-display-name";
 const JOINED_ROOMS_KEY = "chat-joined-rooms";
+const ROOM_DRAFTS_KEY = "chat-room-drafts";
 
 type ViewMode = "group" | "private";
 
@@ -39,7 +40,24 @@ function App() {
     return ["general"];
   });
   const [groupMessages, setGroupMessages] = useState<ChatMessage[]>([]);
-  const [messageInput, setMessageInput] = useState("");
+  const [roomDrafts, setRoomDrafts] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+    const stored = window.localStorage.getItem(ROOM_DRAFTS_KEY);
+    if (!stored) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      // ignore malformed drafts
+    }
+    return {};
+  });
   const [groupInput, setGroupInput] = useState("");
   const [status, setStatus] = useState("Not connected");
   const [connecting, setConnecting] = useState(false);
@@ -62,6 +80,13 @@ function App() {
       window.localStorage.setItem(JOINED_ROOMS_KEY, JSON.stringify(joinedRooms));
     }
   }, [joinedRooms]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(ROOM_DRAFTS_KEY, JSON.stringify(roomDrafts));
+  }, [roomDrafts]);
 
   const loadHistory = useCallback(async (roomName: string) => {
     setLoadingMessages(true);
@@ -222,6 +247,23 @@ function App() {
     }
   };
 
+  const updateDraftForRoom = (room: string, value: string) => {
+    setRoomDrafts((prev) => {
+      if (value === "") {
+        if (!(room in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[room];
+        return next;
+      }
+      if (prev[room] === value) {
+        return prev;
+      }
+      return { ...prev, [room]: value };
+    });
+  };
+
   const handleSendMessage = () => {
     const socket = socketRef.current;
     const trimmed = messageInput.trim();
@@ -234,7 +276,7 @@ function App() {
     if (!trimmed) return;
 
     socket.emit("chat", { room: selectedRoom, content: trimmed });
-    setMessageInput("");
+    updateDraftForRoom(selectedRoom, "");
   };
 
   const handleSendPrivate = () => {
@@ -324,6 +366,7 @@ function App() {
 
   const privateThread = activeUser ? privateMessages[activeUser.id] ?? [] : [];
   const hasJoinedSelected = joinedRooms.includes(selectedRoom);
+  const messageInput = roomDrafts[selectedRoom] ?? "";
   const visibleUsers = me ? users.filter((u) => u.id !== me.id) : users;
 
   return (
@@ -453,7 +496,7 @@ function App() {
             <section className="chat-panel__input">
               <input
                 value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
+                onChange={(e) => updateDraftForRoom(selectedRoom, e.target.value)}
                 placeholder="Say something nice..."
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                 disabled={!hasJoinedSelected}
