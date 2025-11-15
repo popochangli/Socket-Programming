@@ -4,6 +4,7 @@ import { createGroup, fetchGroups } from "./api/group";
 import { fetchPrivateMessages } from "./api/messages";
 import { createSocket } from "./api/socket";
 import type { ChatMessage, Group, UserSummary } from "./types";
+import EmojiPicker from "./components/EmojiPicker";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8080";
@@ -68,6 +69,8 @@ function App() {
   const [privateInput, setPrivateInput] = useState("");
   const [privateLoading, setPrivateLoading] = useState(false);
   const [me, setMe] = useState<UserSummary | null>(null);
+  const [showGroupEmoji, setShowGroupEmoji] = useState(false);
+  const [showPrivateEmoji, setShowPrivateEmoji] = useState(false);
 
   const socketRef = useRef<SocketIOClient.Socket | null>(null);
   const roomRef = useRef(selectedRoom);
@@ -364,6 +367,17 @@ function App() {
     }
   };
 
+  const handleGroupEmojiSelect = (emoji: string) => {
+    const currentText = roomDrafts[selectedRoom] ?? "";
+    updateDraftForRoom(selectedRoom, currentText + emoji);
+    setShowGroupEmoji(false);
+  };
+
+  const handlePrivateEmojiSelect = (emoji: string) => {
+    setPrivateInput((prev) => prev + emoji);
+    setShowPrivateEmoji(false);
+  };
+
   const privateThread = activeUser ? privateMessages[activeUser.id] ?? [] : [];
   const hasJoinedSelected = joinedRooms.includes(selectedRoom);
   const messageInput = roomDrafts[selectedRoom] ?? "";
@@ -493,7 +507,7 @@ function App() {
               </div>
             </section>
 
-            <section className="chat-panel__input">
+            <section className="chat-panel__input" style={{ position: "relative" }}>
               <input
                 value={messageInput}
                 onChange={(e) => updateDraftForRoom(selectedRoom, e.target.value)}
@@ -501,9 +515,24 @@ function App() {
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                 disabled={!hasJoinedSelected}
               />
+              <button
+                type="button"
+                className="emoji-button"
+                onClick={() => setShowGroupEmoji(!showGroupEmoji)}
+                disabled={!hasJoinedSelected}
+                title="Add emoji"
+              >
+                😀
+              </button>
               <button onClick={handleSendMessage} disabled={!hasJoinedSelected}>
                 Send
               </button>
+              {showGroupEmoji && (
+                <EmojiPicker
+                  onEmojiSelect={handleGroupEmojiSelect}
+                  onClose={() => setShowGroupEmoji(false)}
+                />
+              )}
             </section>
           </>
         ) : (
@@ -536,7 +565,7 @@ function App() {
               </div>
             </section>
 
-            <section className="chat-panel__input">
+            <section className="chat-panel__input" style={{ position: "relative" }}>
               <input
                 value={privateInput}
                 onChange={(e) => setPrivateInput(e.target.value)}
@@ -546,9 +575,24 @@ function App() {
                 onKeyDown={(e) => e.key === "Enter" && handleSendPrivate()}
                 disabled={!activeUser}
               />
+              <button
+                type="button"
+                className="emoji-button"
+                onClick={() => setShowPrivateEmoji(!showPrivateEmoji)}
+                disabled={!activeUser}
+                title="Add emoji"
+              >
+                😀
+              </button>
               <button onClick={handleSendPrivate} disabled={!activeUser}>
                 Send
               </button>
+              {showPrivateEmoji && (
+                <EmojiPicker
+                  onEmojiSelect={handlePrivateEmojiSelect}
+                  onClose={() => setShowPrivateEmoji(false)}
+                />
+              )}
             </section>
           </>
         )}

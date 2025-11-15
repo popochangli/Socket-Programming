@@ -243,6 +243,7 @@
 .chat-panel__input {
   display: flex;
   gap: 12px;
+  position: relative;
 }
 
 input,
@@ -290,4 +291,25 @@ button:not(:disabled):hover {
   text-align: center;
   color: #94a3b8;
   margin-top: 40px;
+}
+
+.emoji-button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  font-size: 20px;
+  padding: 10px 16px !important;
+  min-width: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.2s ease;
+}
+
+.emoji-button:not(:disabled):hover {
+  background: rgba(124, 58, 237, 0.2) !important;
+  border-color: rgba(124, 58, 237, 0.5) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+
+.emoji-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
