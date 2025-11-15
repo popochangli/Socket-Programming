@@ -13,10 +13,16 @@ import (
 
 func SetupRouter(srv *socketio.Server) *gin.Engine {
 	r := gin.Default()
+	
+	// Middleware to ensure UTF-8 encoding for all responses
+	r.Use(func(c *gin.Context) {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		c.Next()
+	})
 
 	corsCfg := cors.DefaultConfig()
 	corsCfg.AllowCredentials = true
-	corsCfg.AllowHeaders = []string{"Origin", "Content-Type"}
+	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept-Charset"}
 	corsCfg.AllowMethods = []string{"GET", "POST", "OPTIONS"}
 
 	allowed := strings.TrimSpace(config.C.Socket.CORSAllowed)
