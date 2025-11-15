@@ -1,0 +1,80 @@
+# Socket Programming Project - Workspace .gitignore
+
+## ============================================
+## Go Server artifacts
+## ============================================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+server/server
+server/sever
+server/chat.db
+go.work
+go.work.sum
+
+## ============================================
+## Node.js / TypeScript Client
+## ============================================
+# Dependencies
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+**/dist/
+**/dist-ssr/
+**/build/
+*.local
+
+# TypeScript incremental build info
+*.tsbuildinfo
+.tsbuildinfo
+
+## ============================================
+## Logs & coverage
+## ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+coverage/
+.nyc_output/
+
+## ============================================
+## Environment files
+## ============================================
+.env
+.env.*
+**/.env
+**/.env.*
+
+## ============================================
+## IDE & editor cruft
+## ============================================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*.sw?
+*~
+
+## ============================================
+## OS files & misc temp
+## ============================================
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+.cache/

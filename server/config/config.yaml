@@ -1,0 +1,8 @@
+server:
+  port: 8080
+
+database:
+  sqlite_path: "chat.db"
+
+socket:
+  cors_allowed: "http://127.0.0.1:6000,http://127.0.0.1:6001"
