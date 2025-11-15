@@ -91,7 +91,7 @@ func broadcastUsers(srv *socketio.Server) {
 }
 
 func NewSocketServer() *socketio.Server {
-	// Configure polling transport with proper buffer size for UTF-8 characters
+	// Configure polling transport 
 	pollTransport := &polling.Transport{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
