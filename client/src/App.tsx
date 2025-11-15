@@ -253,6 +253,25 @@ function App() {
       });
     });
 
+    socket.on("groups", (groupsList: Group[]) => {
+      console.log("Groups received:", groupsList);
+      setGroups((prev) => {
+        // Deduplicate by name (name should be unique)
+        const nameMap = new Map<string, Group>();
+        // First, add existing groups
+        prev.forEach((g) => {
+          nameMap.set(g.name.toLowerCase(), g);
+        });
+        // Then, add new groups (will overwrite if same name)
+        groupsList.forEach((g) => {
+          nameMap.set(g.name.toLowerCase(), g);
+        });
+        return Array.from(nameMap.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+      });
+    });
+
     socket.on(
       "typing",
       ({
@@ -314,9 +333,24 @@ function App() {
     const savedName = localStorage.getItem(STORAGE.DISPLAY_NAME);
     if (savedName) setDisplayName(savedName);
 
+    // Fetch groups as fallback (socket will send groups when user joins)
     fetchGroups()
       .then((data) => {
-        setGroups(data.sort((a, b) => a.name.localeCompare(b.name)));
+        setGroups((prev) => {
+          // Deduplicate by name (name should be unique)
+          const nameMap = new Map<string, Group>();
+          // First, add existing groups
+          prev.forEach((g) => {
+            nameMap.set(g.name.toLowerCase(), g);
+          });
+          // Then, add new groups (will overwrite if same name)
+          data.forEach((g) => {
+            nameMap.set(g.name.toLowerCase(), g);
+          });
+          return Array.from(nameMap.values()).sort((a, b) =>
+            a.name.localeCompare(b.name)
+          );
+        });
       })
       .catch(console.error);
 

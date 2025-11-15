@@ -146,6 +146,11 @@ func NewSocketServer() *socketio.Server {
 			"userId": info.ID,
 		})
 		s.Emit("users", listUsers())
+		
+		var groups []models.Group
+		if err := database.DB.Find(&groups).Error; err == nil {
+			s.Emit("groups", groups)
+		}
 	})
 
 	srv.OnEvent("/", "chat", func(s socketio.Conn, payload chatPayload) {
