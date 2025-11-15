@@ -76,7 +76,7 @@ function App() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [modalConnecting, setModalConnecting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
-  const joinTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const joinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modalConnectingRef = useRef(false);
 
   // Refs
@@ -85,7 +85,7 @@ function App() {
   const selectedRoomRef = useRef(selectedRoom);
   const modeRef = useRef(mode);
   const activeUserRef = useRef(activeUser);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joinedRoomsRef = useRef<string[]>(joinedRooms);
 
   // Update refs
@@ -143,19 +143,25 @@ function App() {
       const profile = meRef.current;
       if (profile) {
         // Rejoin all rooms on reconnect
+        // Note: Server will send "joined:rooms" event after each join
+        // which will sync the client state with server state
         joinedRoomsRef.current.forEach((room) => {
           socket.emit("join", { room, name: profile.name });
         });
+      } else {
+        // If not logged in yet, clear joinedRooms to avoid stale state
+        // The server will send the correct list when user joins
+        setJoinedRooms(["general"]);
       }
     });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", (reason: string) => {
       console.log("❌ Socket disconnected:", reason);
       setStatus("Disconnected");
       setConnectionStatus("disconnected");
     });
 
-    socket.on("connect_error", (error) => {
+    socket.on("connect_error", (error: any) => {
       console.error("❌ Socket connect_error:", error);
       console.error("❌ Error message:", error.message);
       console.error("❌ Error type:", error.type);
@@ -201,6 +207,15 @@ function App() {
         }
       }
     );
+
+    // Listen for server's authoritative joined rooms list
+    // This event is sent after each join, ensuring client state matches server state
+    socket.on("joined:rooms", (rooms: string[]) => {
+      console.log("📋 Server joined rooms:", rooms);
+      // Use server's authoritative list - this prevents stale localStorage data
+      // from showing rooms as joined when they're not
+      setJoinedRooms(rooms);
+    });
 
     socket.on("users", (list: UserSummary[]) => {
       console.log("Users updated:", list);
@@ -270,19 +285,13 @@ function App() {
           a.name.localeCompare(b.name)
         );
       });
+      // Note: We don't update joinedRooms here - only the server's
+      // "joined:rooms" event should update joinedRooms state
     });
 
     socket.on(
       "typing",
-      ({
-        room,
-        userId,
-        name,
-      }: {
-        room: string;
-        userId: string;
-        name: string;
-      }) => {
+      ({ room, name }: { room: string; userId: string; name: string }) => {
         setTypingUsers((prev) => {
           const existing = prev[room] || [];
           if (existing.includes(name)) return prev;
@@ -456,19 +465,6 @@ function App() {
       setModalConnecting(false);
       modalConnectingRef.current = false;
     }
-  };
-
-  const handleConnect = () => {
-    const trimmed = displayName.trim();
-    if (!trimmed) {
-      setStatus("Enter a display name");
-      return;
-    }
-    setConnectionStatus("connecting");
-    const socket = ensureSocket();
-    // Emit immediately - Socket.IO will queue if not connected
-    socket.emit("join", { room: selectedRoom, name: trimmed });
-    setStatus(`Joining #${selectedRoom}...`);
   };
 
   const handleSendMessage = (content: string) => {

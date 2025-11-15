@@ -38,8 +38,10 @@ type userInfo struct {
 }
 
 var (
-	usersMu   sync.RWMutex
-	usersByID = map[string]userInfo{}
+	usersMu      sync.RWMutex
+	usersByID    = map[string]userInfo{}
+	roomsMu      sync.RWMutex
+	roomsByID    = map[string]map[string]bool{} // socket ID -> room name -> true
 )
 
 func registerUser(id, name string) (userInfo, error) {
@@ -66,6 +68,41 @@ func removeUser(id string) {
 	usersMu.Lock()
 	delete(usersByID, id)
 	usersMu.Unlock()
+	
+	roomsMu.Lock()
+	delete(roomsByID, id)
+	roomsMu.Unlock()
+}
+
+func addRoomForUser(socketID, room string) {
+	roomsMu.Lock()
+	defer roomsMu.Unlock()
+	if roomsByID[socketID] == nil {
+		roomsByID[socketID] = make(map[string]bool)
+	}
+	roomsByID[socketID][room] = true
+}
+
+func removeRoomForUser(socketID, room string) {
+	roomsMu.Lock()
+	defer roomsMu.Unlock()
+	if roomsByID[socketID] != nil {
+		delete(roomsByID[socketID], room)
+	}
+}
+
+func getRoomsForUser(socketID string) []string {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	rooms := roomsByID[socketID]
+	if rooms == nil {
+		return []string{}
+	}
+	result := make([]string, 0, len(rooms))
+	for room := range rooms {
+		result = append(result, room)
+	}
+	return result
 }
 
 func getUser(id string) (userInfo, bool) {
@@ -116,6 +153,10 @@ func NewSocketServer() *socketio.Server {
 
 	srv.OnConnect("/", func(s socketio.Conn) error {
 		s.Join(s.ID())
+		// Initialize empty rooms map for this socket
+		roomsMu.Lock()
+		roomsByID[s.ID()] = make(map[string]bool)
+		roomsMu.Unlock()
 		log.Println("socket connected:", s.ID())
 		return nil
 	})
@@ -138,6 +179,7 @@ func NewSocketServer() *socketio.Server {
 		}
 
 		s.Join(room)
+		addRoomForUser(s.ID(), room)
 
 		log.Printf("socket %s joined room %s", s.ID(), room)
 		s.Emit("joined", map[string]string{
@@ -151,6 +193,17 @@ func NewSocketServer() *socketio.Server {
 		if err := database.DB.Find(&groups).Error; err == nil {
 			s.Emit("groups", groups)
 		}
+		
+		// Send the user's current joined rooms list
+		// Filter out the socket ID room (used for private messages)
+		allRooms := getRoomsForUser(s.ID())
+		joinedRooms := make([]string, 0)
+		for _, r := range allRooms {
+			if r != s.ID() {
+				joinedRooms = append(joinedRooms, r)
+			}
+		}
+		s.Emit("joined:rooms", joinedRooms)
 	})
 
 	srv.OnEvent("/", "chat", func(s socketio.Conn, payload chatPayload) {
@@ -240,6 +293,7 @@ func NewSocketServer() *socketio.Server {
 			return
 		}
 		s.Leave(room)
+		removeRoomForUser(s.ID(), room)
 		log.Printf("socket %s left room %s", s.ID(), room)
 	})
 
