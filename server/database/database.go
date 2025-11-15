@@ -12,10 +12,15 @@ var DB *gorm.DB
 
 func Connect() {
 	var err error
-	DB, err = gorm.Open(sqlite.Open(config.C.Database.SQLitePath), &gorm.Config{})
+	// Add charset=utf8 and proper encoding parameters to handle non-English characters
+	dbPath := config.C.Database.SQLitePath + "?charset=utf8&parseTime=true"
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect SQLite")
 	}
+	
+	// Execute PRAGMA to ensure UTF-8 encoding
+	DB.Exec("PRAGMA encoding = 'UTF-8'")
 }
 
 func RunMigrations() {

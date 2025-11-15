@@ -3,6 +3,7 @@ package socket
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -90,10 +91,24 @@ func broadcastUsers(srv *socketio.Server) {
 }
 
 func NewSocketServer() *socketio.Server {
+	// Configure polling transport 
+	pollTransport := &polling.Transport{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+	
+	// Configure websocket transport
+	wsTransport := &websocket.Transport{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+	
 	opts := &engineio.Options{
 		Transports: []transport.Transport{
-			polling.Default,
-			websocket.Default,
+			pollTransport,
+			wsTransport,
 		},
 	}
 
