@@ -94,6 +94,20 @@
   white-space: pre-wrap;
 }
 
+.message__image {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+  margin-top: 4px;
+  cursor: pointer;
+  object-fit: contain;
+}
+
+.message__image:hover {
+  opacity: 0.9;
+}
+
 .message__timestamp {
   font-size: 11px;
   color: var(--text-muted);

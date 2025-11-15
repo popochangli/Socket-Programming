@@ -46,12 +46,21 @@ export default function MessageList({ messages, currentUserId }: Props) {
     return colors[hash % colors.length];
   };
 
+  const isImageMessage = (content: string): boolean => {
+    return content.startsWith("IMAGE:");
+  };
+
+  const getImageSrc = (content: string): string => {
+    return content.replace("IMAGE:", "");
+  };
+
   return (
     <div className="message-list">
       {messages.map((msg, index) => {
         const isOwn = msg.author_id === currentUserId;
         const showAvatar = true;
         const showTimestamp = showAvatar || index === messages.length - 1;
+        const isImage = isImageMessage(msg.content);
 
         return (
           <div
@@ -73,7 +82,15 @@ export default function MessageList({ messages, currentUserId }: Props) {
                 <div className="message__author">{msg.author}</div>
               )}
               <div className="message__bubble">
-                <p>{msg.content}</p>
+                {isImage ? (
+                  <img
+                    src={getImageSrc(msg.content)}
+                    alt="Sent image"
+                    className="message__image"
+                  />
+                ) : (
+                  <p>{msg.content}</p>
+                )}
               </div>
               {showTimestamp && (
                 <time className="message__timestamp">

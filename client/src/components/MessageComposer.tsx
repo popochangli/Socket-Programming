@@ -18,6 +18,7 @@ export default function MessageComposer({
   const [value, setValue] = useState(initialValue);
   const [showEmoji, setShowEmoji] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setValue(initialValue);
@@ -56,9 +57,53 @@ export default function MessageComposer({
     textareaRef.current?.focus();
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // ตรวจสอบว่าเป็นไฟล์รูปภาพ
+    if (!file.type.startsWith('image/')) {
+      alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+      return;
+    }
+
+    // จำกัดขนาดไฟล์ (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('ไฟล์รูปภาพต้องมีขนาดไม่เกิน 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+      // ส่งรูปภาพเป็น base64 string พร้อม prefix เพื่อระบุว่าเป็นรูปภาพ
+      onSend(`IMAGE:${base64String}`);
+    };
+    reader.onerror = () => {
+      alert('เกิดข้อผิดพลาดในการอ่านไฟล์');
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="message-composer">
-      <button className="composer-btn" title="Attach file" disabled>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
+      <button 
+        className="composer-btn" 
+        title="Attach image"
+        onClick={() => fileInputRef.current?.click()}
+      >
         📎
       </button>
       <div className="composer-input-wrapper">

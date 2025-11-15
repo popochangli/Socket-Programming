@@ -1,6 +1,6 @@
 .message-composer {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg-primary);
@@ -16,6 +16,10 @@
 
 .composer-input-wrapper {
   flex: 1;
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .composer-input-wrapper textarea {
@@ -28,7 +32,7 @@
   font-family: inherit;
   resize: none;
   outline: none;
-  max-height: 150px;
+  height: 100%;
   line-height: 1.5;
 }
 
@@ -97,20 +101,19 @@
     padding: 6px 8px;
     gap: 6px;
   }
-  
+
   .composer-btn {
     width: 32px;
     height: 32px;
     font-size: 18px;
   }
-  
+
   .composer-input-wrapper textarea {
     font-size: 14px;
     padding: 8px;
   }
-  
+
   .composer-emoji-picker {
     right: -8px;
   }
 }
-
