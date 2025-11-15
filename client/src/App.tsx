@@ -7,6 +7,7 @@ import type { ChatMessage, Group, UserSummary } from "./types";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8080";
+const DISPLAY_NAME_KEY = "chat-display-name";
 
 type ViewMode = "group" | "private";
 
@@ -88,6 +89,10 @@ function App() {
     });
     socket.on("joined", (payload: { room: string; name: string; userId: string }) => {
       const profile = { id: payload.userId, name: payload.name };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DISPLAY_NAME_KEY, profile.name);
+      }
+      setDisplayName(profile.name);
       setMe(profile);
       setJoinedRoom(payload.room);
       setStatus(`Joined #${payload.room}`);
@@ -121,6 +126,14 @@ function App() {
   useEffect(() => {
     roomRef.current = selectedRoom;
   }, [selectedRoom]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY);
+    if (savedName) {
+      setDisplayName(savedName);
+    }
+  }, []);
 
   useEffect(() => {
     meRef.current = me;
@@ -298,11 +311,15 @@ function App() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Jane Doe"
+                disabled={!!me}
               />
             </label>
-            <button onClick={handleConnect} disabled={connecting}>
-              {joinedRoom ? "Reconnect" : "Join room"}
+            <button onClick={handleConnect} disabled={connecting || !displayName.trim()}>
+              {joinedRoom ? "Reconnect" : me ? "Reconnect" : "Join room"}
             </button>
+            {me && (
+              <p className="hint">You are signed in as {me.name}. Reload to change this name.</p>
+            )}
           </div>
           <span className="status">{status}</span>
         </header>

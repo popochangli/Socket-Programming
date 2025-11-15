@@ -64,6 +64,11 @@
 
 .sidebar__create input {
   flex: 1;
+  border-radius: 10px;
+}
+
+.sidebar__create button {
+  border-radius: 10px;
 }
 
 .sidebar__section {
@@ -131,6 +136,12 @@
 .status {
   font-size: 0.85rem;
   color: #94a3b8;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 4px;
 }
 
 .chat-panel__tabs {
