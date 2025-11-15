@@ -8,6 +8,7 @@ import type { ChatMessage, Group, UserSummary } from "./types";
 const API_BASE =
   import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8080";
 const DISPLAY_NAME_KEY = "chat-display-name";
+const JOINED_ROOMS_KEY = "chat-joined-rooms";
 
 type ViewMode = "group" | "private";
 
@@ -16,7 +17,27 @@ function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedRoom, setSelectedRoom] = useState("general");
-  const [joinedRoom, setJoinedRoom] = useState<string | null>(null);
+  const [joinedRooms, setJoinedRooms] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return ["general"];
+    }
+    const stored = window.localStorage.getItem(JOINED_ROOMS_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const normalized = parsed.filter((room) => typeof room === "string" && room.trim().length);
+          if (!normalized.includes("general")) {
+            normalized.unshift("general");
+          }
+          return Array.from(new Set(normalized));
+        }
+      } catch {
+        // ignore parse errors and fall back to default
+      }
+    }
+    return ["general"];
+  });
   const [groupMessages, setGroupMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState("");
   const [groupInput, setGroupInput] = useState("");
@@ -33,6 +54,14 @@ function App() {
   const socketRef = useRef<SocketIOClient.Socket | null>(null);
   const roomRef = useRef(selectedRoom);
   const meRef = useRef<UserSummary | null>(null);
+  const joinedRoomsRef = useRef<string[]>(["general"]);
+
+  useEffect(() => {
+    joinedRoomsRef.current = joinedRooms;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(JOINED_ROOMS_KEY, JSON.stringify(joinedRooms));
+    }
+  }, [joinedRooms]);
 
   const loadHistory = useCallback(async (roomName: string) => {
     setLoadingMessages(true);
@@ -82,10 +111,17 @@ function App() {
     const socket = createSocket();
     socketRef.current = socket;
 
-    socket.on("connect", () => setStatus("Connected to server"));
+    socket.on("connect", () => {
+      setStatus("Connected to server");
+      const profile = meRef.current;
+      if (profile) {
+        joinedRoomsRef.current.forEach((room) => {
+          socket.emit("join", { room, name: profile.name });
+        });
+      }
+    });
     socket.on("disconnect", () => {
       setStatus("Disconnected");
-      setJoinedRoom(null);
     });
     socket.on("joined", (payload: { room: string; name: string; userId: string }) => {
       const profile = { id: payload.userId, name: payload.name };
@@ -94,8 +130,16 @@ function App() {
       }
       setDisplayName(profile.name);
       setMe(profile);
-      setJoinedRoom(payload.room);
+      setJoinedRooms((prev) => {
+        if (prev.includes(payload.room)) {
+          return prev;
+        }
+        return [...prev, payload.room];
+      });
       setStatus(`Joined #${payload.room}`);
+      if (payload.room === roomRef.current) {
+        loadHistory(payload.room);
+      }
     });
     socket.on("users", (list: UserSummary[]) => setUsers(list));
     socket.on("chat", (msg: ChatMessage) => {
@@ -170,7 +214,6 @@ function App() {
     }
     setConnecting(true);
     try {
-      await loadHistory(selectedRoom);
       const socket = ensureSocket();
       socket.emit("join", { room: selectedRoom, name: trimmed });
       setStatus(`Joining #${selectedRoom}...`);
@@ -183,8 +226,8 @@ function App() {
     const socket = socketRef.current;
     const trimmed = messageInput.trim();
 
-    if (!socket || !joinedRoom) {
-      setStatus("Join a room first");
+    if (!socket || !joinedRooms.includes(selectedRoom)) {
+      setStatus("Join this room first");
       return;
     }
 
@@ -221,6 +264,16 @@ function App() {
         }
         return [...prev, newGroup].sort((a, b) => a.name.localeCompare(b.name));
       });
+      setJoinedRooms((prev) => {
+        if (prev.includes(newGroup.name)) {
+          return prev;
+        }
+        return [...prev, newGroup.name];
+      });
+      setSelectedRoom(newGroup.name);
+      roomRef.current = newGroup.name;
+      setMode("group");
+      handleJoinRoom(newGroup.name);
       setGroupInput("");
     } catch (err) {
       if (err instanceof Error) {
@@ -231,6 +284,20 @@ function App() {
     }
   };
 
+  const handleJoinRoom = (roomName: string) => {
+    if (joinedRooms.includes(roomName)) {
+      return;
+    }
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      setStatus("Enter a display name");
+      return;
+    }
+    const socket = ensureSocket();
+    socket.emit("join", { room: roomName, name: trimmed });
+    setStatus(`Joining #${roomName}...`);
+  };
+
   const handleSelectRoom = (roomName: string) => {
     if (roomName === selectedRoom) {
       return;
@@ -238,16 +305,11 @@ function App() {
     setSelectedRoom(roomName);
     setMode("group");
     roomRef.current = roomName;
-    loadHistory(roomName);
-
-    const socket = socketRef.current;
-    const trimmedName = displayName.trim();
-
-    if (socket && joinedRoom) {
-      socket.emit("leave", joinedRoom);
-    }
-    if (socket && trimmedName) {
-      socket.emit("join", { room: roomName, name: trimmedName });
+    if (joinedRooms.includes(roomName)) {
+      loadHistory(roomName);
+    } else {
+      setGroupMessages([]);
+      setStatus("Join this room to see messages");
     }
   };
 
@@ -261,6 +323,7 @@ function App() {
   };
 
   const privateThread = activeUser ? privateMessages[activeUser.id] ?? [] : [];
+  const hasJoinedSelected = joinedRooms.includes(selectedRoom);
   const visibleUsers = me ? users.filter((u) => u.id !== me.id) : users;
 
   return (
@@ -271,16 +334,33 @@ function App() {
           <span className="sidebar__count">{groups.length}</span>
         </div>
         <ul className="room-list">
-          {groups.map((group) => (
-            <li key={group.id}>
-              <button
-                className={group.name === selectedRoom ? "active" : ""}
-                onClick={() => handleSelectRoom(group.name)}
-              >
-                #{group.name}
-              </button>
-            </li>
-          ))}
+          {groups.map((group) => {
+            const isGeneral = group.name === "general";
+            const isJoined = joinedRooms.includes(group.name);
+            return (
+              <li key={group.id} className="room-list__item">
+                <button
+                  className={`room-list__room ${group.name === selectedRoom ? "active" : ""}`}
+                  onClick={() => handleSelectRoom(group.name)}
+                >
+                  #{group.name}
+                </button>
+                {!isGeneral && (
+                  isJoined ? (
+                    <span className="room-list__badge">Joined</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="room-list__join"
+                      onClick={() => handleJoinRoom(group.name)}
+                    >
+                      Join
+                    </button>
+                  )
+                )}
+              </li>
+            );
+          })}
         </ul>
         <div className="sidebar__create">
           <input
@@ -323,7 +403,7 @@ function App() {
               />
             </label>
             <button onClick={handleConnect} disabled={connecting || !displayName.trim()}>
-              {joinedRoom ? "Reconnect" : me ? "Reconnect" : "Join room"}
+              {me ? "Reconnect" : "Join room"}
             </button>
             {me && (
               <p className="hint">You are signed in as {me.name}. Reload to change this name.</p>
@@ -352,7 +432,9 @@ function App() {
                 {loadingMessages && <span>Loading...</span>}
               </header>
               <div className="messages">
-                {groupMessages.length === 0 && !loadingMessages ? (
+                {!hasJoinedSelected ? (
+                  <p className="empty">Join this room to view its messages.</p>
+                ) : groupMessages.length === 0 && !loadingMessages ? (
                   <p className="empty">No messages yet.</p>
                 ) : (
                   groupMessages.map((msg) => (
@@ -374,9 +456,9 @@ function App() {
                 onChange={(e) => setMessageInput(e.target.value)}
                 placeholder="Say something nice..."
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                disabled={!joinedRoom}
+                disabled={!hasJoinedSelected}
               />
-              <button onClick={handleSendMessage} disabled={!joinedRoom}>
+              <button onClick={handleSendMessage} disabled={!hasJoinedSelected}>
                 Send
               </button>
             </section>

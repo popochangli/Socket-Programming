@@ -39,7 +39,13 @@
   overflow-y: auto;
 }
 
-.room-list button {
+.room-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-list__room {
   width: 100%;
   text-align: left;
   background: transparent;
@@ -51,10 +57,34 @@
   transition: all 0.2s ease;
 }
 
-.room-list button.active,
-.room-list button:hover {
+.room-list__room.active,
+.room-list__room:hover {
   border-color: rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.room-list__badge {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #4ade80;
+}
+
+.room-list__join {
+  width: auto;
+  text-align: center;
+  background: rgba(79, 70, 229, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.6);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: #c4b5fd;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.room-list__join:hover {
+  background: rgba(79, 70, 229, 0.3);
 }
 
 .sidebar__create {
