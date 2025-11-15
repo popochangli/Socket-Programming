@@ -30,8 +30,19 @@ export default function MessageList({ messages, currentUserId }: Props) {
   };
 
   const getUserColor = (userId: string) => {
-    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E2"];
-    const hash = userId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#FFA07A",
+      "#98D8C8",
+      "#F7DC6F",
+      "#BB8FCE",
+      "#85C1E2",
+    ];
+    const hash = userId
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return colors[hash % colors.length];
   };
 
@@ -39,14 +50,15 @@ export default function MessageList({ messages, currentUserId }: Props) {
     <div className="message-list">
       {messages.map((msg, index) => {
         const isOwn = msg.author_id === currentUserId;
-        const prevMsg = index > 0 ? messages[index - 1] : null;
-        const showAvatar = !prevMsg || prevMsg.author_id !== msg.author_id;
-        const showTimestamp = showAvatar || (index === messages.length - 1);
+        const showAvatar = true;
+        const showTimestamp = showAvatar || index === messages.length - 1;
 
         return (
           <div
             key={msg.id}
-            className={`message ${isOwn ? "message--own" : ""} ${showAvatar ? "message--new-group" : ""}`}
+            className={`message ${isOwn ? "message--own" : ""} ${
+              showAvatar ? "message--new-group" : ""
+            }`}
           >
             {!isOwn && showAvatar && (
               <div
@@ -64,7 +76,9 @@ export default function MessageList({ messages, currentUserId }: Props) {
                 <p>{msg.content}</p>
               </div>
               {showTimestamp && (
-                <time className="message__timestamp">{formatTimestamp(msg.created_at)}</time>
+                <time className="message__timestamp">
+                  {formatTimestamp(msg.created_at)}
+                </time>
               )}
             </div>
           </div>
@@ -74,4 +88,3 @@ export default function MessageList({ messages, currentUserId }: Props) {
     </div>
   );
 }
-

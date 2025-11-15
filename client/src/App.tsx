@@ -495,9 +495,8 @@ function App() {
   const handleCreateGroup = async (name: string) => {
     try {
       const newGroup = await createGroup(name);
-      setGroups((prev) =>
-        [...prev, newGroup].sort((a, b) => a.name.localeCompare(b.name))
-      );
+      // Don't add here - wait for socket event to avoid duplicates
+      // Socket event will broadcast to all clients including this one
       handleJoinRoom(newGroup.name);
       setSelectedRoom(newGroup.name);
     } catch (err) {
