@@ -1,0 +1,235 @@
+.connection-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.connection-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.connection-modal__header {
+  padding: 32px 32px 24px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.connection-modal__header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.connection-modal__header p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.connection-modal__body {
+  padding: 24px 32px;
+}
+
+.connection-modal__input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connection-modal__input-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.connection-modal__input-group input {
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.connection-modal__input-group input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4px rgba(137, 180, 250, 0.15);
+}
+
+.connection-modal__input-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.connection-modal__input-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.connection-modal__error {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid rgba(243, 139, 168, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: shake 0.4s ease-out;
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-8px);
+  }
+  75% {
+    transform: translateX(8px);
+  }
+}
+
+.error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.error-message {
+  font-size: 14px;
+  color: #f38ba8;
+  flex: 1;
+}
+
+.connection-modal__loading {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.connection-modal__loading .loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.connection-modal__footer {
+  padding: 24px 32px 32px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+}
+
+.connection-modal__button {
+  width: 100%;
+  padding: 14px 24px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
+}
+
+.connection-modal__button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(137, 180, 250, 0.4);
+}
+
+.connection-modal__button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.connection-modal__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .connection-modal {
+    width: 95%;
+    max-width: none;
+  }
+
+  .connection-modal__header {
+    padding: 24px 24px 20px;
+  }
+
+  .connection-modal__header h2 {
+    font-size: 20px;
+  }
+
+  .connection-modal__body {
+    padding: 20px 24px;
+  }
+
+  .connection-modal__footer {
+    padding: 20px 24px 24px;
+  }
+}
+
