@@ -105,6 +105,14 @@ function App() {
         return [...prev, msg];
       });
     });
+    socket.on("group:created", (group: Group) => {
+      setGroups((prev) => {
+        if (prev.some((g) => g.id === group.id)) {
+          return prev;
+        }
+        return [...prev, group].sort((a, b) => a.name.localeCompare(b.name));
+      });
+    });
     socket.on("private", (msg: ChatMessage) => {
       const currentUser = meRef.current;
       if (!currentUser) return;

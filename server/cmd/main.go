@@ -6,6 +6,7 @@ import (
 
 	"server/config"
 	"server/database"
+	"server/handlers"
 	"server/routes"
 	"server/socket"
 )
@@ -17,6 +18,7 @@ func main() {
 	database.RunMigrations()
 
 	srv := socket.NewSocketServer()
+	handlers.AttachSocketServer(srv)
 	go srv.Serve()
 	defer srv.Close()
 
