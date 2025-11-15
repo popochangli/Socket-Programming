@@ -4,600 +4,857 @@ import { createGroup, fetchGroups } from "./api/group";
 import { fetchPrivateMessages } from "./api/messages";
 import { createSocket } from "./api/socket";
 import type { ChatMessage, Group, UserSummary } from "./types";
-import EmojiPicker from "./components/EmojiPicker";
+import MessageList from "./components/MessageList";
+import MessageComposer from "./components/MessageComposer";
+import ConnectionModal from "./components/ConnectionModal";
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8080";
-const DISPLAY_NAME_KEY = "chat-display-name";
-const JOINED_ROOMS_KEY = "chat-joined-rooms";
-const ROOM_DRAFTS_KEY = "chat-room-drafts";
+  import.meta.env.VITE_API_BASE ??
+  import.meta.env.VITE_SOCKET_URL ??
+  "http://localhost:8080";
+const STORAGE = {
+  DISPLAY_NAME: "chat-display-name",
+  JOINED_ROOMS: "chat-joined-rooms",
+  ROOM_DRAFTS: "chat-room-drafts",
+  THEME: "chat-theme",
+  SIDEBAR_COLLAPSED: "chat-sidebar-collapsed",
+};
 
 type ViewMode = "group" | "private";
+type Theme = "light" | "dark";
 
 function App() {
+  // Core State
   const [displayName, setDisplayName] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedRoom, setSelectedRoom] = useState("general");
   const [joinedRooms, setJoinedRooms] = useState<string[]>(() => {
-    if (typeof window === "undefined") {
-      return ["general"];
-    }
-    const stored = window.localStorage.getItem(JOINED_ROOMS_KEY);
+    const stored = localStorage.getItem(STORAGE.JOINED_ROOMS);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const normalized = parsed.filter((room) => typeof room === "string" && room.trim().length);
-          if (!normalized.includes("general")) {
-            normalized.unshift("general");
-          }
-          return Array.from(new Set(normalized));
+        if (Array.isArray(parsed) && !parsed.includes("general")) {
+          parsed.unshift("general");
         }
+        return parsed;
       } catch {
-        // ignore parse errors and fall back to default
+        // ignore
       }
     }
     return ["general"];
   });
+
   const [groupMessages, setGroupMessages] = useState<ChatMessage[]>([]);
+  const [privateMessages, setPrivateMessages] = useState<
+    Record<string, ChatMessage[]>
+  >({});
   const [roomDrafts, setRoomDrafts] = useState<Record<string, string>>(() => {
-    if (typeof window === "undefined") {
-      return {};
-    }
-    const stored = window.localStorage.getItem(ROOM_DRAFTS_KEY);
-    if (!stored) {
-      return {};
-    }
-    try {
-      const parsed = JSON.parse(stored);
-      if (parsed && typeof parsed === "object") {
-        return parsed;
-      }
-    } catch {
-      // ignore malformed drafts
-    }
-    return {};
+    const stored = localStorage.getItem(STORAGE.ROOM_DRAFTS);
+    return stored ? JSON.parse(stored) : {};
   });
-  const [groupInput, setGroupInput] = useState("");
-  const [status, setStatus] = useState("Not connected");
-  const [connecting, setConnecting] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // UI State
   const [mode, setMode] = useState<ViewMode>("group");
   const [activeUser, setActiveUser] = useState<UserSummary | null>(null);
-  const [privateMessages, setPrivateMessages] = useState<Record<string, ChatMessage[]>>({});
-  const [privateInput, setPrivateInput] = useState("");
-  const [privateLoading, setPrivateLoading] = useState(false);
   const [me, setMe] = useState<UserSummary | null>(null);
-  const [showGroupEmoji, setShowGroupEmoji] = useState(false);
-  const [showPrivateEmoji, setShowPrivateEmoji] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "disconnected" | "connecting" | "connected"
+  >("disconnected");
+  const [status, setStatus] = useState("Not connected");
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = localStorage.getItem(STORAGE.THEME);
+    return (stored as Theme) || "dark";
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem(STORAGE.SIDEBAR_COLLAPSED) === "true";
+  });
+  const [userPanelOpen, setUserPanelOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [modalConnecting, setModalConnecting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const joinTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const modalConnectingRef = useRef(false);
 
+  // Refs
   const socketRef = useRef<SocketIOClient.Socket | null>(null);
-  const roomRef = useRef(selectedRoom);
   const meRef = useRef<UserSummary | null>(null);
-  const joinedRoomsRef = useRef<string[]>(["general"]);
+  const selectedRoomRef = useRef(selectedRoom);
+  const modeRef = useRef(mode);
+  const activeUserRef = useRef(activeUser);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const joinedRoomsRef = useRef<string[]>(joinedRooms);
 
+  // Update refs
   useEffect(() => {
-    joinedRoomsRef.current = joinedRooms;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(JOINED_ROOMS_KEY, JSON.stringify(joinedRooms));
-    }
-  }, [joinedRooms]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(ROOM_DRAFTS_KEY, JSON.stringify(roomDrafts));
-  }, [roomDrafts]);
-
-  const loadHistory = useCallback(async (roomName: string) => {
-    setLoadingMessages(true);
-    try {
-      const res = await fetch(`${API_BASE}/rooms/${encodeURIComponent(roomName)}/messages`);
-      if (!res.ok) throw new Error();
-      const data: ChatMessage[] = await res.json();
-      setGroupMessages(data);
-    } catch (err) {
-      console.error(err);
-      setStatus("Unable to load messages");
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, []);
-
-  const loadGroups = useCallback(async () => {
-    try {
-      const data = await fetchGroups();
-      data.sort((a, b) => a.name.localeCompare(b.name));
-      setGroups(data);
-    } catch (err) {
-      console.error(err);
-      setStatus("Unable to load groups");
-    }
-  }, []);
-
-  const loadPrivateHistory = useCallback(async (target: UserSummary) => {
-    if (!meRef.current) return;
-    setPrivateLoading(true);
-    try {
-      const data = await fetchPrivateMessages(meRef.current.id, target.id);
-      setPrivateMessages((prev) => ({ ...prev, [target.id]: data }));
-    } catch (err) {
-      console.error(err);
-      setStatus("Unable to load private messages");
-    } finally {
-      setPrivateLoading(false);
-    }
-  }, []);
-
-  const ensureSocket = () => {
-    if (socketRef.current) {
-      return socketRef.current;
-    }
-
-    const socket = createSocket();
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      setStatus("Connected to server");
-      const profile = meRef.current;
-      if (profile) {
-        joinedRoomsRef.current.forEach((room) => {
-          socket.emit("join", { room, name: profile.name });
-        });
-      }
-    });
-    socket.on("disconnect", () => {
-      setStatus("Disconnected");
-    });
-    socket.on("joined", (payload: { room: string; name: string; userId: string }) => {
-      const profile = { id: payload.userId, name: payload.name };
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(DISPLAY_NAME_KEY, profile.name);
-      }
-      setDisplayName(profile.name);
-      setMe(profile);
-      setJoinedRooms((prev) => {
-        if (prev.includes(payload.room)) {
-          return prev;
-        }
-        return [...prev, payload.room];
-      });
-      setStatus(`Joined #${payload.room}`);
-      if (payload.room === roomRef.current) {
-        loadHistory(payload.room);
-      }
-    });
-    socket.on("users", (list: UserSummary[]) => setUsers(list));
-    socket.on("chat", (msg: ChatMessage) => {
-      if (msg.room !== roomRef.current) return;
-      setGroupMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-    });
-    socket.on("group:created", (group: Group) => {
-      setGroups((prev) => {
-        if (prev.some((g) => g.id === group.id)) {
-          return prev;
-        }
-        return [...prev, group].sort((a, b) => a.name.localeCompare(b.name));
-      });
-    });
-    socket.on("private", (msg: ChatMessage) => {
-      const currentUser = meRef.current;
-      if (!currentUser) return;
-      const partnerId = msg.author_id === currentUser.id ? msg.recipient_id ?? "" : msg.author_id;
-      if (!partnerId) return;
-      setPrivateMessages((prev) => {
-        const existing = prev[partnerId] ?? [];
-        if (existing.some((m) => m.id === msg.id)) return prev;
-        return { ...prev, [partnerId]: [...existing, msg] };
-      });
-    });
-    socket.on("error", (payload: { message?: string }) => {
-      setStatus(payload?.message ?? "Server error");
-    });
-
-    return socket;
-  };
-
-  useEffect(() => {
-    roomRef.current = selectedRoom;
+    selectedRoomRef.current = selectedRoom;
   }, [selectedRoom]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY);
-    if (savedName) {
-      setDisplayName(savedName);
-    }
-  }, []);
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    activeUserRef.current = activeUser;
+  }, [activeUser]);
 
   useEffect(() => {
     meRef.current = me;
   }, [me]);
 
   useEffect(() => {
-    loadGroups();
+    joinedRoomsRef.current = joinedRooms;
+  }, [joinedRooms]);
+
+  useEffect(() => {
+    modalConnectingRef.current = modalConnecting;
+  }, [modalConnecting]);
+
+  // Theme Effect
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(STORAGE.THEME, theme);
+  }, [theme]);
+
+  // Persist joined rooms
+  useEffect(() => {
+    localStorage.setItem(STORAGE.JOINED_ROOMS, JSON.stringify(joinedRooms));
+  }, [joinedRooms]);
+
+  // Persist drafts
+  useEffect(() => {
+    localStorage.setItem(STORAGE.ROOM_DRAFTS, JSON.stringify(roomDrafts));
+  }, [roomDrafts]);
+
+  // Socket Connection
+  const ensureSocket = useCallback(() => {
+    if (socketRef.current) return socketRef.current;
+
+    const socket = createSocket();
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("✅ Socket connected:", socket.id);
+      setStatus("Connected");
+      setConnectionStatus("connected");
+      const profile = meRef.current;
+      if (profile) {
+        // Rejoin all rooms on reconnect
+        joinedRoomsRef.current.forEach((room) => {
+          socket.emit("join", { room, name: profile.name });
+        });
+      }
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("❌ Socket disconnected:", reason);
+      setStatus("Disconnected");
+      setConnectionStatus("disconnected");
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("❌ Socket connect_error:", error);
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error type:", error.type);
+      // Show error in modal if we're trying to connect
+      if (modalConnectingRef.current) {
+        const errorMsg = error.message || "Failed to connect to server";
+        setModalError(
+          errorMsg.includes("server error")
+            ? "Server error occurred. Please check server logs and try again."
+            : errorMsg
+        );
+        setModalConnecting(false);
+        modalConnectingRef.current = false;
+      }
+    });
+
+    socket.on(
+      "joined",
+      (payload: { room: string; name: string; userId: string }) => {
+        console.log("✅ Joined room:", payload);
+        const profile = { id: payload.userId, name: payload.name };
+        setDisplayName(profile.name);
+        setMe(profile);
+        meRef.current = profile;
+        localStorage.setItem(STORAGE.DISPLAY_NAME, profile.name);
+        setJoinedRooms((prev) =>
+          prev.includes(payload.room) ? prev : [...prev, payload.room]
+        );
+        setStatus(`Joined #${payload.room}`);
+        setModalConnecting(false);
+        setModalError(null);
+        modalConnectingRef.current = false;
+
+        // Clear join timeout
+        if (joinTimeoutRef.current) {
+          clearTimeout(joinTimeoutRef.current);
+          joinTimeoutRef.current = null;
+        }
+
+        // Load history when joining
+        if (payload.room === selectedRoomRef.current) {
+          loadHistory(payload.room);
+        }
+      }
+    );
+
+    socket.on("users", (list: UserSummary[]) => {
+      console.log("Users updated:", list);
+      setUsers(list);
+    });
+
+    socket.on("chat", (msg: ChatMessage) => {
+      setGroupMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      // Update unread count if not in the room
+      if (msg.room !== selectedRoomRef.current || modeRef.current !== "group") {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [msg.room]: (prev[msg.room] || 0) + 1,
+        }));
+      }
+    });
+
+    socket.on("private", (msg: ChatMessage) => {
+      const currentUser = meRef.current;
+      if (!currentUser) return;
+      const partnerId =
+        msg.author_id === currentUser.id
+          ? msg.recipient_id ?? ""
+          : msg.author_id;
+      if (!partnerId) return;
+      setPrivateMessages((prev) => {
+        const existing = prev[partnerId] ?? [];
+        if (existing.some((m) => m.id === msg.id)) return prev;
+        return { ...prev, [partnerId]: [...existing, msg] };
+      });
+      // Update unread count
+      if (
+        activeUserRef.current?.id !== partnerId ||
+        modeRef.current !== "private"
+      ) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [`dm:${partnerId}`]: (prev[`dm:${partnerId}`] || 0) + 1,
+        }));
+      }
+    });
+
+    socket.on("group:created", (group: Group) => {
+      setGroups((prev) => {
+        if (prev.some((g) => g.id === group.id)) return prev;
+        return [...prev, group].sort((a, b) => a.name.localeCompare(b.name));
+      });
+    });
+
+    socket.on(
+      "typing",
+      ({
+        room,
+        userId,
+        name,
+      }: {
+        room: string;
+        userId: string;
+        name: string;
+      }) => {
+        setTypingUsers((prev) => {
+          const existing = prev[room] || [];
+          if (existing.includes(name)) return prev;
+          return { ...prev, [room]: [...existing, name] };
+        });
+        // Clear typing after 3 seconds
+        setTimeout(() => {
+          setTypingUsers((prev) => ({
+            ...prev,
+            [room]: (prev[room] || []).filter((n) => n !== name),
+          }));
+        }, 3000);
+      }
+    );
+
+    socket.on("error", (payload: { message?: string }) => {
+      console.error("Socket error:", payload);
+      setStatus(payload?.message ?? "Server error");
+      if (modalConnectingRef.current) {
+        setModalError(payload?.message ?? "Server error occurred");
+        setModalConnecting(false);
+        modalConnectingRef.current = false;
+      }
+    });
+
+    return socket;
+  }, []); // Remove joinedRooms dependency
+
+  const loadHistory = useCallback(async (roomName: string) => {
+    setLoadingMessages(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/rooms/${encodeURIComponent(roomName)}/messages`
+      );
+      if (res.ok) {
+        const data: ChatMessage[] = await res.json();
+        setGroupMessages(data);
+      }
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
+
+  // Load initial data
+  useEffect(() => {
+    const savedName = localStorage.getItem(STORAGE.DISPLAY_NAME);
+    if (savedName) setDisplayName(savedName);
+
+    fetchGroups()
+      .then((data) => {
+        setGroups(data.sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch(console.error);
+
     loadHistory("general");
 
     return () => {
       socketRef.current?.disconnect();
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+      }
     };
-  }, [loadGroups, loadHistory]);
+  }, [loadHistory]);
+
+  // Load messages when room/user changes
+  useEffect(() => {
+    if (mode === "group" && joinedRooms.includes(selectedRoom)) {
+      loadHistory(selectedRoom);
+      // Clear unread
+      setUnreadCounts((prev) => ({ ...prev, [selectedRoom]: 0 }));
+    }
+  }, [selectedRoom, mode, joinedRooms, loadHistory]);
 
   useEffect(() => {
     if (mode === "private" && activeUser && me) {
-      loadPrivateHistory(activeUser);
+      fetchPrivateMessages(me.id, activeUser.id)
+        .then((data) =>
+          setPrivateMessages((prev) => ({ ...prev, [activeUser.id]: data }))
+        )
+        .catch(console.error);
+      // Clear unread
+      setUnreadCounts((prev) => ({ ...prev, [`dm:${activeUser.id}`]: 0 }));
     }
-  }, [mode, activeUser, me, loadPrivateHistory]);
+  }, [activeUser, mode, me]);
 
-  const handleConnect = async () => {
-    const trimmed = displayName.trim();
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        const input = document.querySelector<HTMLInputElement>(
+          ".sidebar-search input"
+        );
+        input?.focus();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") {
+        e.preventDefault();
+        setMode("group");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+        e.preventDefault();
+        setMode("private");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, []);
+
+  // Handlers
+  const handleModalConnect = async (name: string) => {
+    const trimmed = name.trim();
     if (!trimmed) {
-      setStatus("Enter a display name");
+      setModalError("Please enter a display name");
       return;
     }
-    setConnecting(true);
+
+    // Clear any existing timeout
+    if (joinTimeoutRef.current) {
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+    }
+
+    setModalError(null);
+    setModalConnecting(true);
+    modalConnectingRef.current = true;
+
     try {
       const socket = ensureSocket();
+      console.log("📤 Emitting join event:", {
+        room: selectedRoom,
+        name: trimmed,
+      });
+      console.log("📊 Socket connected status:", socket.connected);
+
+      // Emit immediately - Socket.IO will queue if not connected
       socket.emit("join", { room: selectedRoom, name: trimmed });
       setStatus(`Joining #${selectedRoom}...`);
-    } finally {
-      setConnecting(false);
-    }
-  };
 
-  const updateDraftForRoom = (room: string, value: string) => {
-    setRoomDrafts((prev) => {
-      if (value === "") {
-        if (!(room in prev)) {
-          return prev;
+      // Add timeout fallback - if no "joined" event after 10 seconds, show error
+      joinTimeoutRef.current = setTimeout(() => {
+        if (!meRef.current) {
+          console.warn("⚠️ Join timeout - no 'joined' event received");
+          setModalError(
+            "Connection timeout. Please check if the server is running and try again."
+          );
+          setModalConnecting(false);
         }
-        const next = { ...prev };
-        delete next[room];
-        return next;
-      }
-      if (prev[room] === value) {
-        return prev;
-      }
-      return { ...prev, [room]: value };
-    });
-  };
-
-  const handleSendMessage = () => {
-    const socket = socketRef.current;
-    const trimmed = messageInput.trim();
-
-    if (!socket || !joinedRooms.includes(selectedRoom)) {
-      setStatus("Join this room first");
-      return;
-    }
-
-    if (!trimmed) return;
-
-    socket.emit("chat", { room: selectedRoom, content: trimmed });
-    updateDraftForRoom(selectedRoom, "");
-  };
-
-  const handleSendPrivate = () => {
-    const socket = socketRef.current;
-    const trimmed = privateInput.trim();
-
-    if (!socket || !activeUser || !me) {
-      setStatus("Select a user to chat");
-      return;
-    }
-
-    if (!trimmed) return;
-
-    socket.emit("private", { to: activeUser.id, content: trimmed });
-    setPrivateInput("");
-  };
-
-  const handleCreateGroup = async () => {
-    const name = groupInput.trim();
-    if (!name) return;
-
-    try {
-      const newGroup = await createGroup(name);
-      setGroups((prev) => {
-        if (prev.some((g) => g.id === newGroup.id)) {
-          return prev;
-        }
-        return [...prev, newGroup].sort((a, b) => a.name.localeCompare(b.name));
-      });
-      setJoinedRooms((prev) => {
-        if (prev.includes(newGroup.name)) {
-          return prev;
-        }
-        return [...prev, newGroup.name];
-      });
-      setSelectedRoom(newGroup.name);
-      roomRef.current = newGroup.name;
-      setMode("group");
-      handleJoinRoom(newGroup.name);
-      setGroupInput("");
+        joinTimeoutRef.current = null;
+      }, 10000);
     } catch (err) {
-      if (err instanceof Error) {
-        setStatus(err.message);
-      } else {
-        setStatus("Unable to create group");
-      }
+      console.error("❌ Connection error:", err);
+      setModalError("Failed to connect. Please try again.");
+      setModalConnecting(false);
+      modalConnectingRef.current = false;
     }
   };
 
-  const handleJoinRoom = (roomName: string) => {
-    if (joinedRooms.includes(roomName)) {
-      return;
-    }
+  const handleConnect = () => {
     const trimmed = displayName.trim();
     if (!trimmed) {
       setStatus("Enter a display name");
       return;
     }
+    setConnectionStatus("connecting");
     const socket = ensureSocket();
-    socket.emit("join", { room: roomName, name: trimmed });
-    setStatus(`Joining #${roomName}...`);
+    // Emit immediately - Socket.IO will queue if not connected
+    socket.emit("join", { room: selectedRoom, name: trimmed });
+    setStatus(`Joining #${selectedRoom}...`);
+  };
+
+  const handleSendMessage = (content: string) => {
+    const socket = socketRef.current;
+    if (!socket || !content.trim()) return;
+
+    if (mode === "group") {
+      if (!joinedRooms.includes(selectedRoom)) {
+        setStatus("Join this room first");
+        return;
+      }
+      socket.emit("chat", { room: selectedRoom, content: content.trim() });
+      setRoomDrafts((prev) => ({ ...prev, [selectedRoom]: "" }));
+    } else if (mode === "private" && activeUser) {
+      socket.emit("private", { to: activeUser.id, content: content.trim() });
+    }
+  };
+
+  const handleTyping = () => {
+    const socket = socketRef.current;
+    if (!socket || !me) return;
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+    if (mode === "group") {
+      socket.emit("typing", {
+        room: selectedRoom,
+        userId: me.id,
+        name: me.name,
+      });
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      // Optional: emit "stop typing" event
+    }, 3000);
   };
 
   const handleSelectRoom = (roomName: string) => {
-    if (roomName === selectedRoom) {
-      return;
-    }
     setSelectedRoom(roomName);
     setMode("group");
-    roomRef.current = roomName;
-    if (joinedRooms.includes(roomName)) {
-      loadHistory(roomName);
-    } else {
-      setGroupMessages([]);
-      setStatus("Join this room to see messages");
-    }
+    setUserPanelOpen(false);
   };
 
   const handleSelectUser = (user: UserSummary) => {
     if (!me || user.id === me.id) return;
     setActiveUser(user);
     setMode("private");
-    if (!privateMessages[user.id]) {
-      loadPrivateHistory(user);
+    setUserPanelOpen(true);
+  };
+
+  const handleJoinRoom = (roomName: string) => {
+    if (joinedRooms.includes(roomName) || !me) return;
+    const socket = ensureSocket();
+    // Emit immediately - Socket.IO will queue if not connected
+    socket.emit("join", { room: roomName, name: me.name });
+  };
+
+  const handleCreateGroup = async (name: string) => {
+    try {
+      const newGroup = await createGroup(name);
+      // Don't add here - wait for socket event to avoid duplicates
+      // Socket event will broadcast to all clients including this one
+      handleJoinRoom(newGroup.name);
+      setSelectedRoom(newGroup.name);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Failed to create group");
     }
   };
 
-  const handleGroupEmojiSelect = (emoji: string) => {
-    const currentText = roomDrafts[selectedRoom] ?? "";
-    updateDraftForRoom(selectedRoom, currentText + emoji);
-    setShowGroupEmoji(false);
-  };
+  const toggleTheme = () =>
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
 
-  const handlePrivateEmojiSelect = (emoji: string) => {
-    setPrivateInput((prev) => prev + emoji);
-    setShowPrivateEmoji(false);
-  };
-
-  const privateThread = activeUser ? privateMessages[activeUser.id] ?? [] : [];
-  const hasJoinedSelected = joinedRooms.includes(selectedRoom);
-  const messageInput = roomDrafts[selectedRoom] ?? "";
   const visibleUsers = me ? users.filter((u) => u.id !== me.id) : users;
+  const currentMessages =
+    mode === "group"
+      ? groupMessages.filter((m) => m.room === selectedRoom)
+      : activeUser
+      ? privateMessages[activeUser.id] ?? []
+      : [];
+  const currentTyping = mode === "group" ? typingUsers[selectedRoom] || [] : [];
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="sidebar__header">
-          <h2>Rooms</h2>
-          <span className="sidebar__count">{groups.length}</span>
-        </div>
-        <ul className="room-list">
-          {groups.map((group) => {
-            const isGeneral = group.name === "general";
-            const isJoined = joinedRooms.includes(group.name);
-            return (
-              <li key={group.id} className="room-list__item">
-                <button
-                  className={`room-list__room ${group.name === selectedRoom ? "active" : ""}`}
-                  onClick={() => handleSelectRoom(group.name)}
-                >
-                  #{group.name}
-                </button>
-                {!isGeneral && (
-                  isJoined ? (
-                    <span className="room-list__badge">Joined</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="room-list__join"
-                      onClick={() => handleJoinRoom(group.name)}
-                    >
-                      Join
-                    </button>
-                  )
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        <div className="sidebar__create">
-          <input
-            placeholder="New room name"
-            value={groupInput}
-            onChange={(e) => setGroupInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
-          />
-          <button onClick={handleCreateGroup}>Create</button>
-        </div>
+    <>
+      {/* Connection Modal - Shows when not connected */}
+      {!me && (
+        <ConnectionModal
+          onConnect={handleModalConnect}
+          connecting={modalConnecting}
+          error={modalError}
+        />
+      )}
 
-        <div className="sidebar__section">
-          <h3>Online</h3>
-          <ul className="user-list">
-            {visibleUsers.map((user) => (
-              <li key={user.id}>
-                <button
-                  className={activeUser?.id === user.id ? "active" : ""}
-                  onClick={() => handleSelectUser(user)}
-                >
-                  {user.name}
-                </button>
-              </li>
-            ))}
-            {visibleUsers.length === 0 && <li className="empty">No one is online.</li>}
-          </ul>
-        </div>
-      </aside>
-
-      <main className="chat-panel">
-        <header className="chat-panel__header">
-          <div>
-            <label>
-              Display name
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Jane Doe"
-                disabled={!!me}
-              />
-            </label>
-            <button onClick={handleConnect} disabled={connecting || !displayName.trim()}>
-              {me ? "Reconnect" : "Join room"}
+      <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+        {/* App Header */}
+        <header className="app-header">
+          <div className="app-header__left">
+            <h1 className="app-logo">💬 ChatApp</h1>
+          </div>
+          <div className="app-header__right">
+            <button
+              className="icon-btn"
+              onClick={toggleTheme}
+              title="Toggle theme"
+            >
+              {theme === "light" ? "🌙" : "☀️"}
             </button>
             {me && (
-              <p className="hint">You are signed in as {me.name}. Reload to change this name.</p>
+              <div className="user-badge">
+                <div className="avatar">{me.name.charAt(0).toUpperCase()}</div>
+                <span>{me.name}</span>
+              </div>
             )}
           </div>
-          <span className="status">{status}</span>
         </header>
 
-        <div className="chat-panel__tabs">
-          <button className={mode === "group" ? "active" : ""} onClick={() => setMode("group")}>
-            Group Chat
-          </button>
-          <button
-            className={mode === "private" ? "active" : ""}
-            onClick={() => setMode("private")}
-          >
-            Private Messages
-          </button>
-        </div>
+        <div className="app-body">
+          {/* Sidebar */}
+          <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+            <button
+              className="sidebar-toggle"
+              onClick={() => {
+                setSidebarCollapsed(!sidebarCollapsed);
+                localStorage.setItem(
+                  STORAGE.SIDEBAR_COLLAPSED,
+                  String(!sidebarCollapsed)
+                );
+              }}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? "→" : "←"}
+            </button>
 
-        {mode === "group" ? (
-          <>
-            <section className="chat-panel__messages">
-              <header>
-                <h3>#{selectedRoom}</h3>
-                {loadingMessages && <span>Loading...</span>}
-              </header>
-              <div className="messages">
-                {!hasJoinedSelected ? (
-                  <p className="empty">Join this room to view its messages.</p>
-                ) : groupMessages.length === 0 && !loadingMessages ? (
-                  <p className="empty">No messages yet.</p>
-                ) : (
-                  groupMessages.map((msg) => (
-                    <article key={msg.id} className="message">
-                      <div className="message__meta">
-                        <strong>{msg.author}</strong>
-                        <time>{new Date(msg.created_at).toLocaleTimeString()}</time>
-                      </div>
-                      <p>{msg.content}</p>
-                    </article>
-                  ))
-                )}
-              </div>
-            </section>
+            {!sidebarCollapsed && (
+              <>
+                {/* Search */}
+                <div className="sidebar-search">
+                  <input
+                    type="text"
+                    placeholder="Search rooms, users... (⌘K)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
 
-            <section className="chat-panel__input" style={{ position: "relative" }}>
-              <input
-                value={messageInput}
-                onChange={(e) => updateDraftForRoom(selectedRoom, e.target.value)}
-                placeholder="Say something nice..."
-                onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                disabled={!hasJoinedSelected}
-              />
-              <button
-                type="button"
-                className="emoji-button"
-                onClick={() => setShowGroupEmoji(!showGroupEmoji)}
-                disabled={!hasJoinedSelected}
-                title="Add emoji"
-              >
-                😀
-              </button>
-              <button onClick={handleSendMessage} disabled={!hasJoinedSelected}>
-                Send
-              </button>
-              {showGroupEmoji && (
-                <EmojiPicker
-                  onEmojiSelect={handleGroupEmojiSelect}
-                  onClose={() => setShowGroupEmoji(false)}
-                />
-              )}
-            </section>
-          </>
-        ) : (
-          <>
-            <section className="chat-panel__messages">
-              <header>
-                <h3>
-                  {activeUser ? `DM with ${activeUser.name}` : "Select a user to start a DM"}
-                </h3>
-                {privateLoading && <span>Loading...</span>}
-              </header>
-              <div className="messages">
-                {(!activeUser || privateThread.length === 0) && !privateLoading ? (
-                  <p className="empty">
-                    {activeUser
-                      ? "No private messages yet."
-                      : "There are no private chats yet. Pick someone from the list to start one."}
+                {/* Rooms Section */}
+                <section className="sidebar-section">
+                  <h3 className="sidebar-section__title">
+                    <span>Rooms</span>
+                    <button
+                      onClick={() => {
+                        const name = prompt("Enter room name:");
+                        if (name) handleCreateGroup(name);
+                      }}
+                      title="Create new room"
+                    >
+                      +
+                    </button>
+                  </h3>
+                  <ul className="sidebar-list">
+                    {groups
+                      .filter((g) =>
+                        g.name.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((group) => {
+                        const isSelected =
+                          mode === "group" && selectedRoom === group.name;
+                        const isJoined = joinedRooms.includes(group.name);
+                        const unread = unreadCounts[group.name] || 0;
+
+                        return (
+                          <li
+                            key={group.id}
+                            className={`sidebar-item ${
+                              isSelected ? "active" : ""
+                            } ${!isJoined ? "not-joined" : ""}`}
+                            onClick={() =>
+                              isJoined && handleSelectRoom(group.name)
+                            }
+                          >
+                            <div className="sidebar-item__icon">#</div>
+                            <div className="sidebar-item__content">
+                              <span className="sidebar-item__name">
+                                {group.name}
+                              </span>
+                              {unread > 0 && (
+                                <span className="sidebar-item__badge">
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              )}
+                            </div>
+                            {!isJoined && (
+                              <button
+                                className="sidebar-item__action"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleJoinRoom(group.name);
+                                }}
+                              >
+                                Join
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </section>
+
+                {/* Direct Messages Section */}
+                <section className="sidebar-section">
+                  <h3 className="sidebar-section__title">
+                    <span>Direct Messages</span>
+                    <span className="online-count">
+                      {visibleUsers.length} online
+                    </span>
+                  </h3>
+                  <ul className="sidebar-list">
+                    {visibleUsers
+                      .filter((u) =>
+                        u.name.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((user) => {
+                        const isSelected =
+                          mode === "private" && activeUser?.id === user.id;
+                        const unread = unreadCounts[`dm:${user.id}`] || 0;
+
+                        return (
+                          <li
+                            key={user.id}
+                            className={`sidebar-item ${
+                              isSelected ? "active" : ""
+                            }`}
+                            onClick={() => handleSelectUser(user)}
+                          >
+                            <div className="sidebar-item__icon avatar">
+                              <div className="presence-indicator online"></div>
+                              {user.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="sidebar-item__content">
+                              <span className="sidebar-item__name">
+                                {user.name}
+                              </span>
+                              {unread > 0 && (
+                                <span className="sidebar-item__badge">
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    {visibleUsers.length === 0 && (
+                      <li className="sidebar-empty">No users online</li>
+                    )}
+                  </ul>
+                </section>
+              </>
+            )}
+          </aside>
+
+          {/* Main Chat Area */}
+          <main className="chat-main">
+            {/* Chat Header */}
+            <header className="chat-header">
+              <div className="chat-header__left">
+                <div className="chat-header__icon">
+                  {mode === "group"
+                    ? "#"
+                    : activeUser?.name.charAt(0).toUpperCase() || "?"}
+                </div>
+                <div className="chat-header__info">
+                  <h2 className="chat-header__title">
+                    {mode === "group"
+                      ? selectedRoom
+                      : activeUser?.name || "Select a user"}
+                  </h2>
+                  <p className="chat-header__subtitle">
+                    {mode === "group"
+                      ? `${users.length} member${users.length !== 1 ? "s" : ""}`
+                      : activeUser
+                      ? "🟢 Active now"
+                      : "Start a conversation"}
                   </p>
-                ) : (
-                  privateThread.map((msg) => (
-                    <article key={msg.id} className="message">
-                      <div className="message__meta">
-                        <strong>{msg.author}</strong>
-                        <time>{new Date(msg.created_at).toLocaleTimeString()}</time>
-                      </div>
-                      <p>{msg.content}</p>
-                    </article>
-                  ))
+                </div>
+              </div>
+              <div className="chat-header__right">
+                <button className="icon-btn" title="Search in conversation">
+                  🔍
+                </button>
+                {mode === "private" && (
+                  <button
+                    className="icon-btn"
+                    onClick={() => setUserPanelOpen(!userPanelOpen)}
+                    title="Toggle user info"
+                  >
+                    {userPanelOpen ? "✕" : "ℹ️"}
+                  </button>
                 )}
               </div>
-            </section>
+            </header>
 
-            <section className="chat-panel__input" style={{ position: "relative" }}>
-              <input
-                value={privateInput}
-                onChange={(e) => setPrivateInput(e.target.value)}
-                placeholder={
-                  activeUser ? `Message ${activeUser.name}` : "Select a user to start chatting"
-                }
-                onKeyDown={(e) => e.key === "Enter" && handleSendPrivate()}
-                disabled={!activeUser}
-              />
-              <button
-                type="button"
-                className="emoji-button"
-                onClick={() => setShowPrivateEmoji(!showPrivateEmoji)}
-                disabled={!activeUser}
-                title="Add emoji"
-              >
-                😀
-              </button>
-              <button onClick={handleSendPrivate} disabled={!activeUser}>
-                Send
-              </button>
-              {showPrivateEmoji && (
-                <EmojiPicker
-                  onEmojiSelect={handlePrivateEmojiSelect}
-                  onClose={() => setShowPrivateEmoji(false)}
+            {/* Messages Area */}
+            <div className="chat-messages">
+              {!me ? (
+                <div className="chat-empty">
+                  <div className="chat-empty__icon">👋</div>
+                  <h3>Welcome to ChatApp!</h3>
+                  <p>Connect with your name to start chatting with others.</p>
+                </div>
+              ) : mode === "group" && !joinedRooms.includes(selectedRoom) ? (
+                <div className="chat-empty">
+                  <div className="chat-empty__icon">🚪</div>
+                  <h3>Join #{selectedRoom}</h3>
+                  <p>
+                    Join this room to see messages and participate in the
+                    conversation.
+                  </p>
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleJoinRoom(selectedRoom)}
+                  >
+                    Join Room
+                  </button>
+                </div>
+              ) : loadingMessages ? (
+                <div className="chat-empty">
+                  <div className="loading-spinner"></div>
+                  <p>Loading messages...</p>
+                </div>
+              ) : currentMessages.length === 0 ? (
+                <div className="chat-empty">
+                  <div className="chat-empty__icon">💬</div>
+                  <h3>No messages yet</h3>
+                  <p>Be the first to say hello!</p>
+                </div>
+              ) : (
+                <MessageList
+                  messages={currentMessages}
+                  currentUserId={me?.id}
                 />
               )}
-            </section>
-          </>
-        )}
-      </main>
-    </div>
+
+              {/* Typing Indicator */}
+              {currentTyping.length > 0 && (
+                <div className="typing-indicator">
+                  <div className="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <span>
+                    {currentTyping.join(", ")}{" "}
+                    {currentTyping.length === 1 ? "is" : "are"} typing...
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Message Composer */}
+            {me &&
+              (mode === "group"
+                ? joinedRooms.includes(selectedRoom)
+                : activeUser) && (
+                <div className="chat-composer">
+                  <MessageComposer
+                    onSend={handleSendMessage}
+                    onTyping={handleTyping}
+                    placeholder={
+                      mode === "group"
+                        ? `Message #${selectedRoom}`
+                        : `Message ${activeUser?.name || ""}`
+                    }
+                    initialValue={
+                      mode === "group" ? roomDrafts[selectedRoom] || "" : ""
+                    }
+                  />
+                </div>
+              )}
+
+            {/* Connection Status */}
+            <div className={`connection-status ${connectionStatus}`}>
+              <span className="connection-dot"></span>
+              {status}
+            </div>
+          </main>
+
+          {/* User Info Panel (Right Sidebar) */}
+          {userPanelOpen && activeUser && mode === "private" && (
+            <aside className="user-panel">
+              <button
+                className="user-panel__close"
+                onClick={() => setUserPanelOpen(false)}
+              >
+                ✕
+              </button>
+              <div className="user-panel__header">
+                <div className="user-panel__avatar">
+                  {activeUser.name.charAt(0).toUpperCase()}
+                  <div className="presence-indicator online"></div>
+                </div>
+                <h3>{activeUser.name}</h3>
+                <p className="status-text">🟢 Active now</p>
+              </div>
+              <div className="user-panel__section">
+                <h4>About</h4>
+                <p className="text-muted">No bio yet</p>
+              </div>
+              <div className="user-panel__section">
+                <h4>Actions</h4>
+                <button className="btn-secondary" disabled>
+                  🔕 Mute Notifications
+                </button>
+                <button className="btn-secondary" disabled>
+                  🚫 Block User
+                </button>
+              </div>
+            </aside>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 

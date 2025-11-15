@@ -1,0 +1,116 @@
+.message-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  position: relative;
+  box-shadow: 0 2px 8px var(--shadow);
+  transition: box-shadow 0.2s;
+}
+
+.message-composer:focus-within {
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.composer-input-wrapper {
+  flex: 1;
+}
+
+.composer-input-wrapper textarea {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  max-height: 150px;
+  line-height: 1.5;
+}
+
+.composer-input-wrapper textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.composer-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 20px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composer-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  transform: scale(1.05);
+}
+
+.composer-btn--send {
+  background: var(--accent-primary);
+  color: white;
+  font-size: 18px;
+}
+
+.composer-btn--send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.composer-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.composer-emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  z-index: 1000;
+  animation: popIn 0.2s ease-out;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .message-composer {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  
+  .composer-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+  
+  .composer-input-wrapper textarea {
+    font-size: 14px;
+    padding: 8px;
+  }
+  
+  .composer-emoji-picker {
+    right: -8px;
+  }
+}
+
