@@ -313,8 +313,7 @@ function App() {
           </button>
           <button
             className={mode === "private" ? "active" : ""}
-            onClick={() => activeUser && setMode("private")}
-            disabled={!activeUser}
+            onClick={() => setMode("private")}
           >
             Private Messages
           </button>
@@ -368,7 +367,11 @@ function App() {
               </header>
               <div className="messages">
                 {(!activeUser || privateThread.length === 0) && !privateLoading ? (
-                  <p className="empty">No private messages yet.</p>
+                  <p className="empty">
+                    {activeUser
+                      ? "No private messages yet."
+                      : "There are no private chats yet. Pick someone from the list to start one."}
+                  </p>
                 ) : (
                   privateThread.map((msg) => (
                     <article key={msg.id} className="message">
