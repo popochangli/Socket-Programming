@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"log"
 	"strings"
 
 	"server/config"
@@ -14,6 +15,13 @@ import (
 func SetupRouter(srv *socketio.Server) *gin.Engine {
 	r := gin.Default()
 	
+	// Debug middleware to log origin
+	r.Use(func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		log.Printf("Request Origin: %s, Path: %s", origin, c.Request.URL.Path)
+		c.Next()
+	})
+	
 	// Middleware to ensure UTF-8 encoding for all responses
 	r.Use(func(c *gin.Context) {
 		c.Header("Content-Type", "application/json; charset=utf-8")
@@ -21,14 +29,17 @@ func SetupRouter(srv *socketio.Server) *gin.Engine {
 	})
 
 	corsCfg := cors.DefaultConfig()
-	corsCfg.AllowCredentials = true
-	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept-Charset"}
-	corsCfg.AllowMethods = []string{"GET", "POST", "OPTIONS"}
+	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept-Charset", "Authorization"}
+	corsCfg.AllowMethods = []string{"GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"}
 
 	allowed := strings.TrimSpace(config.C.Socket.CORSAllowed)
+	log.Printf("CORS Allowed Origins: %s", allowed)
+	
 	if allowed == "" || allowed == "*" {
 		corsCfg.AllowAllOrigins = true
+		corsCfg.AllowCredentials = false
 	} else {
+		corsCfg.AllowCredentials = true
 		corsCfg.AllowOrigins = []string{}
 		for _, origin := range strings.Split(allowed, ",") {
 			origin = strings.TrimSpace(origin)
@@ -36,6 +47,7 @@ func SetupRouter(srv *socketio.Server) *gin.Engine {
 				corsCfg.AllowOrigins = append(corsCfg.AllowOrigins, origin)
 			}
 		}
+		log.Printf("Configured CORS Origins: %v", corsCfg.AllowOrigins)
 	}
 	r.Use(cors.New(corsCfg))
 
