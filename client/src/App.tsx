@@ -69,6 +69,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem(STORAGE.SIDEBAR_COLLAPSED) === "true";
   });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userPanelOpen, setUserPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -564,6 +565,13 @@ function App() {
         {/* App Header */}
         <header className="app-header">
           <div className="app-header__left">
+            <button
+              className="icon-btn mobile-menu-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              title="Toggle sidebar"
+            >
+              ☰
+            </button>
             <h1 className="app-logo">💬 ChatApp</h1>
           </div>
           <div className="app-header__right">
@@ -584,8 +592,20 @@ function App() {
         </header>
 
         <div className="app-body">
+          {/* Mobile Sidebar Overlay */}
+          {sidebarOpen && (
+            <div
+              className="sidebar-overlay"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+
           {/* Sidebar */}
-          <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+          <aside
+            className={`sidebar ${sidebarCollapsed ? "collapsed" : ""} ${
+              sidebarOpen ? "open" : ""
+            }`}
+          >
             <button
               className="sidebar-toggle"
               onClick={() => {
@@ -643,9 +663,12 @@ function App() {
                             className={`sidebar-item ${
                               isSelected ? "active" : ""
                             } ${!isJoined ? "not-joined" : ""}`}
-                            onClick={() =>
-                              isJoined && handleSelectRoom(group.name)
-                            }
+                            onClick={() => {
+                              if (isJoined) {
+                                handleSelectRoom(group.name);
+                                setSidebarOpen(false);
+                              }
+                            }}
                           >
                             <div className="sidebar-item__icon">#</div>
                             <div className="sidebar-item__content">
@@ -664,6 +687,7 @@ function App() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleJoinRoom(group.name);
+                                  setSidebarOpen(false);
                                 }}
                               >
                                 Join
@@ -700,7 +724,12 @@ function App() {
                             className={`sidebar-item ${
                               isSelected ? "active" : ""
                             } ${isMe ? "is-me" : ""}`}
-                            onClick={() => !isMe && handleSelectUser(user)}
+                            onClick={() => {
+                              if (!isMe) {
+                                handleSelectUser(user);
+                                setSidebarOpen(false);
+                              }
+                            }}
                             style={
                               isMe ? { cursor: "default", opacity: 1 } : {}
                             }
