@@ -537,7 +537,10 @@ function App() {
   const toggleTheme = () =>
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
 
-  const visibleUsers = me ? users.filter((u) => u.id !== me.id) : users;
+  // Include current user in visible users list to show their online status
+  const visibleUsers = me
+    ? [...users.filter((u) => u.id !== me.id), me]
+    : users;
   const currentMessages =
     mode === "group"
       ? groupMessages.filter((m) => m.room === selectedRoom)
@@ -686,6 +689,7 @@ function App() {
                         u.name.toLowerCase().includes(searchQuery.toLowerCase())
                       )
                       .map((user) => {
+                        const isMe = me && user.id === me.id;
                         const isSelected =
                           mode === "private" && activeUser?.id === user.id;
                         const unread = unreadCounts[`dm:${user.id}`] || 0;
@@ -695,8 +699,12 @@ function App() {
                             key={user.id}
                             className={`sidebar-item ${
                               isSelected ? "active" : ""
-                            }`}
-                            onClick={() => handleSelectUser(user)}
+                            } ${isMe ? "is-me" : ""}`}
+                            onClick={() => !isMe && handleSelectUser(user)}
+                            style={
+                              isMe ? { cursor: "default", opacity: 1 } : {}
+                            }
+                            title={isMe ? "You" : undefined}
                           >
                             <div className="sidebar-item__icon avatar">
                               <div className="presence-indicator online"></div>
@@ -705,6 +713,7 @@ function App() {
                             <div className="sidebar-item__content">
                               <span className="sidebar-item__name">
                                 {user.name}
+                                {isMe && " (You)"}
                               </span>
                               {unread > 0 && (
                                 <span className="sidebar-item__badge">
