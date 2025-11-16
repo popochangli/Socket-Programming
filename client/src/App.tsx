@@ -3,10 +3,11 @@ import "./App.css";
 import { createGroup, fetchGroups } from "./api/group";
 import { fetchPrivateMessages } from "./api/messages";
 import { createSocket } from "./api/socket";
-import type { ChatMessage, Group, UserSummary } from "./types";
+import type { ChatMessage, Group, UserSummary, RoomMember } from "./types";
 import MessageList from "./components/MessageList";
 import MessageComposer from "./components/MessageComposer";
 import ConnectionModal from "./components/ConnectionModal";
+import MemberList from "./components/MemberList";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ??
@@ -71,6 +72,8 @@ function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userPanelOpen, setUserPanelOpen] = useState(false);
+  const [memberPanelOpen, setMemberPanelOpen] = useState(false);
+  const [roomMembers, setRoomMembers] = useState<Record<string, RoomMember[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
@@ -221,6 +224,14 @@ function App() {
     socket.on("users", (list: UserSummary[]) => {
       console.log("Users updated:", list);
       setUsers(list);
+    });
+
+    socket.on("room:members", (payload: { room: string; members: RoomMember[] }) => {
+      console.log("Room members updated:", payload);
+      setRoomMembers((prev) => ({
+        ...prev,
+        [payload.room]: payload.members,
+      }));
     });
 
     socket.on("chat", (msg: ChatMessage) => {
@@ -507,6 +518,7 @@ function App() {
     setSelectedRoom(roomName);
     setMode("group");
     setUserPanelOpen(false);
+    setMemberPanelOpen(false);
   };
 
   const handleSelectUser = (user: UserSummary) => {
@@ -780,7 +792,9 @@ function App() {
                   </h2>
                   <p className="chat-header__subtitle">
                     {mode === "group"
-                      ? `${users.length} member${users.length !== 1 ? "s" : ""}`
+                      ? selectedRoom === "general"
+                        ? `${users.length} member${users.length !== 1 ? "s" : ""}`
+                        : ""
                       : activeUser
                       ? "🟢 Active now"
                       : "Start a conversation"}
@@ -791,6 +805,15 @@ function App() {
                 <button className="icon-btn" title="Search in conversation">
                   🔍
                 </button>
+                {mode === "group" && selectedRoom !== "general" && (
+                  <button
+                    className="icon-btn"
+                    onClick={() => setMemberPanelOpen(!memberPanelOpen)}
+                    title="Toggle members list"
+                  >
+                    {memberPanelOpen ? "✕" : "👥"}
+                  </button>
+                )}
                 {mode === "private" && (
                   <button
                     className="icon-btn"
@@ -918,6 +941,29 @@ function App() {
                   🚫 Block User
                 </button>
               </div>
+            </aside>
+          )}
+
+          {/* Member List Panel (Right Sidebar) */}
+          {memberPanelOpen && mode === "group" && selectedRoom !== "general" && (
+            <aside className="member-panel">
+              <button
+                className="member-panel__close"
+                onClick={() => setMemberPanelOpen(false)}
+              >
+                ✕
+              </button>
+              <div className="member-panel__header">
+                <h3>Members</h3>
+                <p className="member-panel__subtitle">
+                  {roomMembers[selectedRoom]?.length || 0} total member
+                  {roomMembers[selectedRoom]?.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <MemberList
+                members={roomMembers[selectedRoom] || []}
+                currentUserId={me?.id}
+              />
             </aside>
           )}
         </div>

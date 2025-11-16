@@ -20,3 +20,9 @@ export interface UserSummary {
   id: string;
   name: string;
 }
+
+export interface RoomMember {
+  id: string;
+  name: string;
+  is_online: boolean;
+}

@@ -37,6 +37,12 @@ type userInfo struct {
 	Name string `json:"name"`
 }
 
+type roomMember struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	IsOnline bool  `json:"is_online"`
+}
+
 var (
 	usersMu      sync.RWMutex
 	usersByID    = map[string]userInfo{}
@@ -127,6 +133,66 @@ func broadcastUsers(srv *socketio.Server) {
 	srv.BroadcastToNamespace("/", "users", users)
 }
 
+func getRoomMembers(room string) []roomMember {
+	// Skip general room
+	if room == "general" {
+		return []roomMember{}
+	}
+	
+	// Get all members who have ever joined this room from database
+	var dbMembers []models.RoomMember
+	if err := database.DB.Where("room = ?", room).Find(&dbMembers).Error; err != nil {
+		log.Printf("Failed to get room members from database: %v", err)
+		return []roomMember{}
+	}
+	
+	// Get currently online socket IDs in this room
+	onlineSocketIDs := make(map[string]bool)
+	roomsMu.RLock()
+	for socketID, rooms := range roomsByID {
+		if rooms[room] {
+			onlineSocketIDs[socketID] = true
+		}
+	}
+	roomsMu.RUnlock()
+	
+	// Build result with online status
+	members := make([]roomMember, 0, len(dbMembers))
+	usersMu.RLock()
+	for _, dbMember := range dbMembers {
+		// Check if this user is currently online in this room
+		isOnline := false
+		for socketID := range onlineSocketIDs {
+			if user, ok := usersByID[socketID]; ok && user.ID == dbMember.UserID {
+				isOnline = true
+				break
+			}
+		}
+		
+		members = append(members, roomMember{
+			ID:       dbMember.UserID,
+			Name:     dbMember.UserName,
+			IsOnline: isOnline,
+		})
+	}
+	usersMu.RUnlock()
+	
+	return members
+}
+
+func broadcastRoomMembers(srv *socketio.Server, room string) {
+	// Skip broadcasting for general room
+	if room == "general" {
+		return
+	}
+	
+	members := getRoomMembers(room)
+	srv.BroadcastToRoom("/", room, "room:members", map[string]interface{}{
+		"room":    room,
+		"members": members,
+	})
+}
+
 func NewSocketServer() *socketio.Server {
 	// Configure polling transport 
 	pollTransport := &polling.Transport{
@@ -181,6 +247,29 @@ func NewSocketServer() *socketio.Server {
 		s.Join(room)
 		addRoomForUser(s.ID(), room)
 
+		// Save room membership to database (if not general room)
+		if room != "general" {
+			var existingMember models.RoomMember
+			result := database.DB.Where("room = ? AND user_id = ?", room, info.ID).First(&existingMember)
+			if result.Error != nil {
+				// Member doesn't exist, create new record
+				newMember := models.RoomMember{
+					Room:     room,
+					UserID:   info.ID,
+					UserName: info.Name,
+				}
+				if err := database.DB.Create(&newMember).Error; err != nil {
+					log.Printf("Failed to save room member: %v", err)
+				}
+			} else {
+				// Member exists, update name in case it changed
+				if existingMember.UserName != info.Name {
+					existingMember.UserName = info.Name
+					database.DB.Save(&existingMember)
+				}
+			}
+		}
+
 		log.Printf("socket %s joined room %s", s.ID(), room)
 		s.Emit("joined", map[string]string{
 			"room":   room,
@@ -204,6 +293,9 @@ func NewSocketServer() *socketio.Server {
 			}
 		}
 		s.Emit("joined:rooms", joinedRooms)
+		
+		// Broadcast room members update
+		broadcastRoomMembers(srv, room)
 	})
 
 	srv.OnEvent("/", "chat", func(s socketio.Conn, payload chatPayload) {
@@ -295,12 +387,22 @@ func NewSocketServer() *socketio.Server {
 		s.Leave(room)
 		removeRoomForUser(s.ID(), room)
 		log.Printf("socket %s left room %s", s.ID(), room)
+		// Broadcast room members update
+		broadcastRoomMembers(srv, room)
 	})
 
 	srv.OnDisconnect("/", func(s socketio.Conn, reason string) {
 		log.Printf("socket disconnected %s: %s", s.ID(), reason)
+		// Get rooms before removing user
+		rooms := getRoomsForUser(s.ID())
 		removeUser(s.ID())
 		broadcastUsers(srv)
+		// Broadcast room members update for all rooms the user was in
+		for _, room := range rooms {
+			if room != s.ID() { // Skip socket ID room
+				broadcastRoomMembers(srv, room)
+			}
+		}
 	})
 
 	srv.OnError("/", func(s socketio.Conn, err error) {

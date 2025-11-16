@@ -24,7 +24,7 @@ func Connect() {
 }
 
 func RunMigrations() {
-	if err := DB.AutoMigrate(&models.User{}, &models.Message{}, &models.Group{}); err != nil {
+	if err := DB.AutoMigrate(&models.User{}, &models.Message{}, &models.Group{}, &models.RoomMember{}); err != nil {
 		panic("Failed to run migrations")
 	}
 
